@@ -1,0 +1,113 @@
+generator client{
+  provider="prisma-client-js"
+}
+datasource db{
+  provider="postgresql"
+  url= env("DATABASE_URL")
+}
+
+//CORE TABLES
+
+model Organization{
+  id  String @id @default(uuid())
+  name  String
+  createdAt DateTime @default(now())
+  users User[]
+  projects Project[]
+  invites Invite[]
+}
+
+model User{
+  id String @id @default(uuid())
+  orgId String
+  name String
+  email String @unique
+  password String
+  role String @default("MEMBER")  //ADMIN,MEMBER,MANAGER
+  organization Organization @relation(fields: [orgId], references: [id])
+  ownedModules Module[]
+  initiatedHandshakes Handshake[] @relation("InitiatedHandshakes")
+  auditLogs AuditLog[]
+  createdInvites Invite[] @relation("CreatedInvites")
+  usedInvites Invite[] @relation("UsedInvites")
+}
+
+model Project{
+  id String @id @default(uuid())
+  orgId String
+  name String
+  status String @default("ACTIVE") 
+  organization Organization @relation(fields: [orgId], references: [id])
+  modules Module[]
+}
+
+model Module{
+  id String @id @default(uuid())
+  projectId String
+  ownerId String
+  title String
+  status String @default("IN_PROGRESS")  // IN_PROGRESS, PENDING_HANDSHAKE, COMPLETED
+  createdAt DateTime @default(now())
+  expectedCompletionDate DateTime?
+  completedAt DateTime?
+  project Project @relation(fields: [projectId], references: [id])
+  owner User @relation(fields: [ownerId], references: [id])
+
+  outgoingHandshakes Handshake[] @relation("FromModule")
+  incomingHandshakes Handshake[] @relation("ToModule")
+  dependencies    ModuleDependency[] @relation("ModuleDependencies")
+  requiredBy      ModuleDependency[] @relation("RequiredByModules")
+  specification   String? @db.Text
+}
+
+model Handshake{
+  id String @id @default(uuid())
+  fromModuleId String
+  toModuleId String
+  initiatedById String
+  status String @default("PENDING")  //PENDING,ACCEPTED,REJECTED,ESCALATED
+  proofUrl String?
+  createdAt DateTime @default(now())
+  resolvedAt DateTime?
+
+  fromModule Module @relation("FromModule", fields: [fromModuleId], references: [id])
+  toModule Module @relation("ToModule", fields: [toModuleId], references: [id])
+  initiatedBy User @relation("InitiatedHandshakes", fields: [initiatedById], references: [id])
+}
+
+model AuditLog{
+  id String @id @default(uuid())
+  entityType String
+  entityId String
+  action String
+  actorId String
+  actor User @relation(fields: [actorId], references: [id])
+  timestamp DateTime @default(now())
+}
+
+model ModuleDependency {
+  id String @id @default(uuid())
+  moduleId String
+  dependsOnId String
+
+  module      Module   @relation("ModuleDependencies", fields: [moduleId], references: [id])
+  dependsOn   Module   @relation("RequiredByModules", fields: [dependsOnId], references: [id])
+
+@@unique([moduleId, dependsOnId])
+}
+
+model Invite {
+  id String @id @default(uuid())
+  code String @unique
+  orgId String
+  role String
+  createdById String
+  expiresAt DateTime
+  usedAt DateTime?
+  usedById String?
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  createdBy User @relation("CreatedInvites", fields: [createdById], references: [id])
+  usedBy User? @relation("UsedInvites", fields: [usedById], references: [id])
+}
